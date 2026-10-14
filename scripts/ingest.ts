@@ -22,6 +22,11 @@ const REQUIRED = new Set(["devpost"]);
 /** Cities Nedim is testing with; the summary lists matches for them. */
 const WATCH = /münchen|munich|zürich|zurich|milano|milan/i;
 
+/** In GitHub Actions, also report as an annotation so it shows on the run summary. */
+function notice(message: string) {
+  console.log(process.env.GITHUB_ACTIONS ? `::notice::${message}` : message);
+}
+
 async function main() {
   const dryRun = process.argv.includes("--dry-run");
   const db = dryRun ? null : serviceClient();
@@ -32,11 +37,12 @@ async function main() {
   for (const source of SOURCES) {
     try {
       const found = await source.read();
-      console.log(`${source.name}: ${found.length} hackathons`);
+      notice(`${source.name}: ${found.length} hackathons`);
       if (found.length === 0 && REQUIRED.has(source.name)) failures.push(`${source.name} returned 0 hackathons`);
       all.push(...found);
     } catch (err) {
       console.error(`${source.name} failed:`, err);
+      notice(`${source.name} failed: ${(err as Error).message}`);
       if (REQUIRED.has(source.name)) failures.push(`${source.name}: ${(err as Error).message}`);
     }
   }
@@ -55,10 +61,10 @@ async function main() {
     acc[h.registrationStatus] = (acc[h.registrationStatus] ?? 0) + 1;
     return acc;
   }, {});
-  console.log(`merged: ${merged.length} (${JSON.stringify(byStatus)}), online: ${merged.filter((h) => h.isOnline).length}`);
+  notice(`merged: ${merged.length} (${JSON.stringify(byStatus)}), online: ${merged.filter((h) => h.isOnline).length}`);
   const watched = merged.filter((h) => WATCH.test(h.locationText ?? ""));
-  console.log(`Munich / Zurich / Milan: ${watched.length}`);
-  for (const h of watched) console.log(`  - [${h.registrationStatus}] ${h.title} · ${h.locationText} · ${h.startsOn ?? "?"}`);
+  const lines = watched.map((h) => `[${h.registrationStatus}] ${h.title} · ${h.locationText} · ${h.startsOn ?? "?"}`);
+  notice(`Munich / Zurich / Milan: ${watched.length}${lines.length ? `: ${lines.join(" | ")}` : ""}`);
 
   if (db) {
     const res = await saveHackathons(db, merged);
